@@ -36,7 +36,7 @@ model {
         ndk {
             moduleName "native-lib"
             toolchain = "clang"
-            stl = "c++_static"
+            stl = "stlport_static"
             platformVersion = 16
             debuggable true
 
@@ -50,6 +50,9 @@ model {
                     dependencies {
                         // library "native-lib" linkage "shared"
                         library "libcrypto" linkage "static"
+                    }
+                    exportedHeaders {
+                        srcDir "src/main/headers"
                     }
                 }
                 jniLibs {
