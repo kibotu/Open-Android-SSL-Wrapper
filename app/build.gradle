@@ -1,18 +1,6 @@
 apply plugin: 'com.android.model.application'
 
 model {
-
-    repositories {
-        libs(PrebuiltLibraries) {
-            libcrypto {
-                headers.srcDir "src/main/jni"
-                binaries.withType(StaticLibraryBinary) {
-                    staticLibraryFile = file("src/main/jniLibs/${targetPlatform.getName()}/libcrypto.a")
-                }
-            }
-        }
-    }
-
     android {
         compileSdkVersion = 25
         buildToolsVersion = '25.0.0'
@@ -33,45 +21,12 @@ model {
                 debuggable true
             }
         }
-        ndk {
-            moduleName "native-lib"
-            toolchain = "clang"
-            stl = "c++_static"
-            platformVersion = 16
-            debuggable true
-
-            CFlags.addAll(["O2", "-fvisibility=hidden", "-fpic", "-std=gnu++11", "-frtti", "-fexceptions", "-fpermissive", "-DANDROID"])
-            abiFilters.addAll(["armeabi", "armeabi-v7a", "x86", "x86_64", "arm64-v8a"])
-            ldLibs.addAll(["log"])
-        }
-        sources {
-            main {
-                jni {
-                    dependencies {
-                        // library "native-lib" linkage "shared"
-                        library "libcrypto" linkage "static"
-                    }
-                }
-                jniLibs {
-                    source {
-                        srcDir "src/main/jni/prebuilts"
-                        srcDir 'src/main/libs'
-                    }
-                }
-            }
-        }
-        abis {
-            create("armeabi-v7a") {
-                cppFlags.addAll(["-mhard-float", "-D_NDK_MATH_NO_SOFTFP=1", "-mfloat-abi=hard"])
-                ldLibs.add("m_hard")
-                ldFlags.add("-Wl,--no-warn-mismatch")
-            }
-        }
     }
 }
 
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
+    compile project(':openssl')
     testCompile 'junit:junit:4.12'
     compile 'com.android.support:appcompat-v7:25.0.1'
 }

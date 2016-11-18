@@ -1,31 +1,76 @@
-apply plugin: 'com.android.library'
+apply plugin: 'com.android.model.library'
 
-android {
-    compileSdkVersion 25
-    buildToolsVersion "25.0.0"
+model {
 
-    defaultConfig {
-        minSdkVersion 15
-        targetSdkVersion 25
-        versionCode 1
-        versionName "1.0"
-
-        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
-
+    repositories {
+        libs(PrebuiltLibraries) {
+            libcrypto {
+                headers.srcDir "src/main/jni"
+                binaries.withType(StaticLibraryBinary) {
+                    staticLibraryFile = file("src/main/jniLibs/${targetPlatform.getName()}/libcrypto.a")
+                }
+            }
+        }
     }
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+    android {
+        compileSdkVersion = 25
+        buildToolsVersion = '25.0.0'
+
+        defaultConfig.with {
+            minSdkVersion.apiLevel = 15
+            targetSdkVersion.apiLevel = 25
+            versionCode = 1
+            versionName = "1.0"
+        }
+        buildTypes {
+            release {
+                minifyEnabled false
+                proguardFiles.add(file('proguard-android.txt'))
+            }
+            debug {
+                debuggable true
+            }
+        }
+        ndk {
+            moduleName "native-lib"
+            toolchain = "clang"
+            stl = "c++_static"
+            platformVersion = 16
+            debuggable true
+
+            CFlags.addAll(["O2", "-fvisibility=hidden", "-fpic", "-std=gnu++11", "-frtti", "-fexceptions", "-fpermissive", "-DANDROID"])
+            abiFilters.addAll(["armeabi", "armeabi-v7a", "x86", "x86_64", "arm64-v8a"])
+            ldLibs.addAll(["log"])
+        }
+        sources {
+            main {
+                jni {
+                    dependencies {
+                        // library "native-lib" linkage "shared"
+                        library "libcrypto" linkage "static"
+                    }
+                }
+                jniLibs {
+                    source {
+                        srcDir "src/main/jni/prebuilts"
+                        srcDir 'src/main/libs'
+                    }
+                }
+            }
+        }
+        abis {
+            create("armeabi-v7a") {
+                cppFlags.addAll(["-mhard-float", "-D_NDK_MATH_NO_SOFTFP=1", "-mfloat-abi=hard"])
+                ldLibs.add("m_hard")
+                ldFlags.add("-Wl,--no-warn-mismatch")
+            }
         }
     }
 }
 
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
-    androidTestCompile('com.android.support.test.espresso:espresso-core:2.2.2', {
-        exclude group: 'com.android.support', module: 'support-annotations'
-    })
-    compile 'com.android.support:appcompat-v7:25.0.1'
     testCompile 'junit:junit:4.12'
+    compile 'com.android.support:appcompat-v7:25.0.1'
 }
