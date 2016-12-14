@@ -16,7 +16,7 @@ model {
 
     android {
         compileSdkVersion = 25
-        buildToolsVersion = '25.0.0'
+        buildToolsVersion = '25.0.1'
 
         defaultConfig.with {
             minSdkVersion.apiLevel = 15
@@ -34,7 +34,7 @@ model {
             }
         }
         ndk {
-            moduleName "native-lib"
+            moduleName "opensslwrapper"
             toolchain = "clang"
             stl = "stlport_static"
             platformVersion = 16

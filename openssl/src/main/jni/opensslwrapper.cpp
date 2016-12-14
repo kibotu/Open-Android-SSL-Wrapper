@@ -27,7 +27,7 @@ unsigned char *as_unsigned_char_array(JNIEnv *env, jbyteArray array) {
  * void net.kibotu.openssl.jni.NativeOpenSSL#init()
  */
 extern "C" void Java_net_kibotu_openssl_jni_NativeOpenSSL_init(JNIEnv *env,
-                                                                         jobject /* this */) {
+                                                               jobject /* this */) {
 
     ERR_load_crypto_strings();
     OpenSSL_add_all_algorithms();
@@ -40,9 +40,9 @@ extern "C" void Java_net_kibotu_openssl_jni_NativeOpenSSL_init(JNIEnv *env,
  * byte[] net.kibotu.openssl.jni.NativeOpenSSL#encrypt(byte[], String)
  */
 extern "C" jbyteArray Java_net_kibotu_openssl_jni_NativeOpenSSL_encrypt(JNIEnv *env,
-                                                                                  jobject /* this */,
-                                                                                  jbyteArray jPassword,
-                                                                                  jbyteArray jPayload) {
+                                                                        jobject /* this */,
+                                                                        jbyteArray jPassword,
+                                                                        jbyteArray jPayload) {
 
     unsigned char *cipher = as_unsigned_char_array(env, jPassword);
     unsigned char *payload = as_unsigned_char_array(env, jPayload);
@@ -71,9 +71,9 @@ extern "C" jbyteArray Java_net_kibotu_openssl_jni_NativeOpenSSL_encrypt(JNIEnv *
  * String net.kibotu.openssl.jni.NativeOpenSSL#decrypt(byte[], byte[])
  */
 extern "C" jbyteArray Java_net_kibotu_openssl_jni_NativeOpenSSL_decrypt(JNIEnv *env,
-                                                                                  jobject /* this */,
-                                                                                  jbyteArray jPassword,
-                                                                                  jbyteArray jEncrypted) {
+                                                                        jobject /* this */,
+                                                                        jbyteArray jPassword,
+                                                                        jbyteArray jEncrypted) {
 
     unsigned char *cipher = as_unsigned_char_array(env, jPassword);
     unsigned char *encrypted = as_unsigned_char_array(env, jEncrypted);
@@ -96,23 +96,3 @@ extern "C" jbyteArray Java_net_kibotu_openssl_jni_NativeOpenSSL_decrypt(JNIEnv *
 
     return jResult;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

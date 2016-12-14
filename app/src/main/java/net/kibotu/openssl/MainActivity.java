@@ -15,6 +15,6 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         // http://stackoverflow.com/questions/38832797/using-prebuilt-library-in-android-studio
-        NativeOpenSSL.encryptDecryptTest(this);
+        NativeOpenSSL.encryptDecryptTest();
     }
 }
