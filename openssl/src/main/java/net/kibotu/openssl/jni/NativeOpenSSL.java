@@ -1,11 +1,21 @@
 package net.kibotu.openssl.jni;
 
-import android.content.Context;
 import android.support.annotation.IntRange;
+import android.support.annotation.NonNull;
 import android.util.Base64;
 import android.util.Log;
 
+import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
+import org.joda.time.Duration;
+import org.joda.time.Seconds;
+
+import java.math.BigInteger;
+import java.util.Calendar;
 import java.util.Random;
+import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
+
 
 /**
  * Created by <a href="https://about.me/janrabe">Jan Rabe</a>.
@@ -19,10 +29,8 @@ public class NativeOpenSSL {
      * Used to load the 'native-lib' library on application startup.
      */
     static {
-        System.loadLibrary("native-lib");
+        System.loadLibrary("opensslwrapper");
     }
-
-    private static final int AMOUNT_LEADING_NON_ZERO_BYTES = 4;
 
     public native void init();
 
@@ -83,6 +91,10 @@ public class NativeOpenSSL {
      */
     public String encrypt(byte[] password, String json) {
         return Base64.encodeToString(encrypt(password, addLeadingBytesAndPadding(json)), Base64.NO_WRAP);
+    }
+
+    public String encryptWithTime(byte[] password, String json) {
+        return Base64.encodeToString(encrypt(password, addLeadingBytesAndPaddingWithTime(json)), Base64.NO_WRAP);
     }
 
     /**
@@ -164,16 +176,58 @@ public class NativeOpenSSL {
         return removeLeadingBytesAndPadding(decrypt(password, Base64.decode(message.getBytes(), Base64.NO_WRAP)));
     }
 
+    public String decrypt(byte[] password, String message, int units, TimeUnit unit) {
+        return removeLeadingBytesAndPadding(decrypt(password, Base64.decode(message.getBytes(), Base64.NO_WRAP)), units, unit);
+    }
+
+    /**
+     * <img src="http://i.imgur.com/hHBTnro.png" />
+     */
+    private byte[] addLeadingBytesAndPaddingWithTime(String plainMessage) {
+
+        int terminationBytes = 1;
+        int randomBytes = 8;
+
+        // 1) 8 bytes random (must be non zero)
+        byte[] nonZeroRandomBytes = randomNonZeroBytes(randomBytes);
+
+        // 2) 8 bytes epoch time
+        byte[] epochTimeBytes = BigInteger.valueOf(createCalendarUTC().getTimeInMillis() / 1000).toByteArray();
+
+        // 3) n bytes plain message
+        byte[] plainBytes = plainMessage.getBytes();
+
+        // create final byte array
+        byte[] finalByteMessage = new byte[plainBytes.length + randomBytes + epochTimeBytes.length + terminationBytes];
+
+        // set first 8 bytes non zero random bytes
+        System.arraycopy(nonZeroRandomBytes, 0, finalByteMessage, 0, nonZeroRandomBytes.length);
+
+        // set first 8 bytes non zero random bytes
+        System.arraycopy(epochTimeBytes, 0, finalByteMessage, nonZeroRandomBytes.length, epochTimeBytes.length);
+
+        // copy actual message bytes
+        System.arraycopy(plainBytes, 0, finalByteMessage, nonZeroRandomBytes.length + epochTimeBytes.length, plainBytes.length);
+
+        // 4) 1 byte termination '0x00'
+        finalByteMessage[finalByteMessage.length - 1] = 0x00;
+
+        return finalByteMessage;
+    }
+
     private byte[] addLeadingBytesAndPadding(String plainMessage) {
+
+        int terminationBytes = 1;
+        int randomBytes = 4;
 
         // plain message to bytes
         byte[] plainBytes = plainMessage.getBytes();
 
         // create final byte array
-        byte[] finalByteMessage = new byte[plainBytes.length + 5];
+        byte[] finalByteMessage = new byte[plainBytes.length + randomBytes + terminationBytes];
 
         // create 4 random non zero bytes
-        byte[] nonZeroBytes = randomNonZeroBytes(AMOUNT_LEADING_NON_ZERO_BYTES);
+        byte[] nonZeroBytes = randomNonZeroBytes(randomBytes);
 
         // set first 4 bytes non zero random bytes
         System.arraycopy(nonZeroBytes, 0, finalByteMessage, 0, nonZeroBytes.length);
@@ -189,29 +243,78 @@ public class NativeOpenSSL {
 
     private String removeLeadingBytesAndPadding(byte[] decryptedMessage) {
 
-        int lastIndex = AMOUNT_LEADING_NON_ZERO_BYTES;
+        int randomBytes = 4;
+
+        int lastIndex = randomBytes;
 
         // find index of '0x00' termination byte
-        for (int i = AMOUNT_LEADING_NON_ZERO_BYTES; i < decryptedMessage.length; ++i)
+        for (int i = randomBytes; i < decryptedMessage.length; ++i)
             if (decryptedMessage[i] == 0x00) {
                 lastIndex = i;
                 break;
             }
 
         // create message
-        byte[] message = new byte[lastIndex - AMOUNT_LEADING_NON_ZERO_BYTES];
+        byte[] message = new byte[lastIndex - randomBytes];
 
         // copy actual message into return value
-        System.arraycopy(decryptedMessage, AMOUNT_LEADING_NON_ZERO_BYTES, message, 0, lastIndex - AMOUNT_LEADING_NON_ZERO_BYTES);
+        System.arraycopy(decryptedMessage, randomBytes, message, 0, lastIndex - randomBytes);
 
         return new String(message);
+    }
+
+    private String removeLeadingBytesAndPadding(byte[] decryptedMessage, int units, TimeUnit unit) {
+
+        int randomBytes = 8;
+        int amountEpochTimeBytes = 8;
+
+        int lastIndex = randomBytes;
+
+        // find index of '0x00' termination byte
+        for (int i = randomBytes; i < decryptedMessage.length; ++i)
+            if (decryptedMessage[i] == 0x00) {
+                lastIndex = i;
+                break;
+            }
+
+        byte[] epochBytes = new byte[amountEpochTimeBytes];
+
+        System.arraycopy(decryptedMessage, randomBytes, epochBytes, epochBytes.length, epochBytes.length);
+
+        if (!timedOut(epochBytes, units, unit))
+            return "TIME_OUT";
+
+        // create message
+        byte[] message = new byte[lastIndex - (randomBytes + amountEpochTimeBytes)];
+
+        // copy actual message into return value
+        System.arraycopy(decryptedMessage, randomBytes, message, 0, lastIndex - (randomBytes + amountEpochTimeBytes));
+
+        return new String(message);
+    }
+
+    public static DateTimeZone utcTimeZone() {
+        return DateTimeZone.forTimeZone(TimeZone.getTimeZone("UTC"));
+    }
+
+    public static boolean isLessThanFromUTC(long startTime, long endTime, int units, TimeUnit timeUnit) {
+        return new Duration(new DateTime(startTime, utcTimeZone()), new DateTime(endTime, utcTimeZone()))
+                .toStandardSeconds()
+                .isLessThan(Seconds.seconds((int) timeUnit.toSeconds(units)));
+    }
+
+    /**
+     * @param epochBytes epoch time in millis (8 bytes)
+     */
+    public static boolean timedOut(byte[] epochBytes, int units, TimeUnit timeUnit) {
+        return isLessThanFromUTCNow(new BigInteger(epochBytes).longValue() * 1000, units, timeUnit);
     }
 
     private static byte[] randomNonZeroBytes(int count) {
         return randomBytesInRange(count, 1, 254);
     }
 
-    public static void encryptDecryptTest(Context context)  {
+    public static void encryptDecryptTest() {
 
         NativeOpenSSL nativeOpenSSL = new NativeOpenSSL();
         nativeOpenSSL.init();
@@ -226,10 +329,12 @@ public class NativeOpenSSL {
 
 
     }
+
     private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
+
     public static String bytesToHex(byte[] bytes) {
         char[] hexChars = new char[bytes.length * 2];
-        for ( int j = 0; j < bytes.length; j++ ) {
+        for (int j = 0; j < bytes.length; j++) {
             int v = bytes[j] & 0xFF;
             hexChars[j * 2] = hexArray[v >>> 4];
             hexChars[j * 2 + 1] = hexArray[v & 0x0F];
@@ -253,10 +358,17 @@ public class NativeOpenSSL {
         final byte result[] = new byte[encoded.length() / 2];
         final char enc[] = encoded.toCharArray();
         for (int i = 0; i < enc.length; i += 2) {
-            StringBuilder curr = new StringBuilder(2);
-            curr.append(enc[i]).append(enc[i + 1]);
-            result[i / 2] = (byte) Integer.parseInt(curr.toString(), 16);
+            result[i / 2] = (byte) Integer.parseInt(String.valueOf(enc[i]) + enc[i + 1], 16);
         }
         return result;
+    }
+
+
+    @NonNull
+    private static Calendar createCalendarUTC() {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTimeZone(TimeZone.getTimeZone("UTC"));
+        calendar.set(Calendar.MILLISECOND, 0);
+        return calendar;
     }
 }
