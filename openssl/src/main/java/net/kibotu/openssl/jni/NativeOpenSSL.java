@@ -1,14 +1,14 @@
 package net.kibotu.openssl.jni;
 
 import android.support.annotation.IntRange;
-import android.support.annotation.NonNull;
 import android.util.Base64;
 import android.util.Log;
 import android.util.Pair;
 
-import java.util.Calendar;
+import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
+
 import java.util.Random;
-import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
 
@@ -404,15 +404,7 @@ public class NativeOpenSSL {
     }
 
     public static long nowInSeconds() {
-        return createCalendarUTC().getTimeInMillis() / 1000L;
-    }
-
-    @NonNull
-    public static Calendar createCalendarUTC() {
-        Calendar calendar = Calendar.getInstance();
-        calendar.setTimeZone(TimeZone.getTimeZone("UTC"));
-        calendar.set(Calendar.MILLISECOND, 0);
-        return calendar;
+        return new DateTime(DateTimeZone.UTC).getMillisOfSecond();
     }
 
     public static byte[] randomNonZeroBytes(int count) {
@@ -468,7 +460,28 @@ public class NativeOpenSSL {
 
         AESEncrypt result = nativeOpenSSL.encrypt(cipher, json);
         Log.v(TAG, "[jni] encryptWithTime= " + result);
-        AESDecrypt decrypt = nativeOpenSSL.decrypt(cipher, result);
-        Log.v(TAG, "[jni] decrypted= " + decrypt + " timedOut (61s+) =" + decrypt.timedOut(61, TimeUnit.SECONDS));
+        final AESDecrypt decrypt = nativeOpenSSL.decrypt(cipher, result);
+
+
+        Log.v(TAG, "[jni] wait");
+        try {
+            Thread.sleep(4000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        Log.v(TAG, "[jni] continue");
+        Log.v(TAG, "[jni] decrypted= " + decrypt + " timedOut (61s+) =" + decrypt.timedOut(5, TimeUnit.SECONDS));
+
+
+        Log.v(TAG, "[jni] wait");
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        Log.v(TAG, "[jni] continue");
+        Log.v(TAG, "[jni] decrypted= " + decrypt + " timedOut (61s+) =" + decrypt.timedOut(5, TimeUnit.SECONDS));
     }
 }
