@@ -404,7 +404,7 @@ public class NativeOpenSSL {
     }
 
     public static long nowInSeconds() {
-        return new DateTime(DateTimeZone.UTC).getMillisOfSecond();
+        return new DateTime(DateTimeZone.UTC).getMillisOfSecond() / 1000L;
     }
 
     public static byte[] randomNonZeroBytes(int count) {
