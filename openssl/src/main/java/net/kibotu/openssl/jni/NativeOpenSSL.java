@@ -404,7 +404,7 @@ public class NativeOpenSSL {
     }
 
     public static long nowInSeconds() {
-        return new DateTime(DateTimeZone.UTC).getMillisOfSecond() / 1000L;
+        return DateTime.now(DateTimeZone.UTC).getMillis() / 1000L;
     }
 
     public static byte[] randomNonZeroBytes(int count) {
@@ -449,6 +449,8 @@ public class NativeOpenSSL {
 
         NativeOpenSSL nativeOpenSSL = new NativeOpenSSL();
         nativeOpenSSL.init();
+
+        Log.v(TAG, "seconds=" + nowInSeconds());
 
         byte[] cipher = fromHexString("00112233445566778899AABBCCDDEEFF");
         String json = "리필 리셋";
