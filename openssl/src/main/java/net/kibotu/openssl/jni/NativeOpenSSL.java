@@ -4,13 +4,8 @@ import android.support.annotation.IntRange;
 import android.support.annotation.NonNull;
 import android.util.Base64;
 import android.util.Log;
+import android.util.Pair;
 
-import org.joda.time.DateTime;
-import org.joda.time.DateTimeZone;
-import org.joda.time.Duration;
-import org.joda.time.Seconds;
-
-import java.math.BigInteger;
 import java.util.Calendar;
 import java.util.Random;
 import java.util.TimeZone;
@@ -37,6 +32,100 @@ public class NativeOpenSSL {
     public native byte[] encrypt(byte[] password, byte[] message);
 
     public native byte[] decrypt(byte[] password, byte[] message);
+
+    public static class AESEncrypt {
+
+        public String data;
+        public long time;
+
+        public AESEncrypt setData(String data) {
+            this.data = data;
+            return this;
+        }
+
+        public AESEncrypt setTime(long time) {
+            this.time = time;
+            return this;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            AESEncrypt that = (AESEncrypt) o;
+
+            if (time != that.time) return false;
+            return data != null ? data.equals(that.data) : that.data == null;
+
+        }
+
+        @Override
+        public int hashCode() {
+            int result = data != null ? data.hashCode() : 0;
+            result = 31 * result + (int) (time ^ (time >>> 32));
+            return result;
+        }
+
+        @Override
+        public String toString() {
+            return "AESEncrypt{" +
+                    "data='" + data + '\'' +
+                    ", time=" + time +
+                    '}';
+        }
+
+        public boolean timedOut(int units, TimeUnit unit) {
+            return NativeOpenSSL.timedOut(nowInSeconds(), time, units, unit);
+        }
+    }
+
+    public static class AESDecrypt {
+
+        public String data;
+        public long time;
+
+        public AESDecrypt setDecrypted(String decrypted) {
+            this.data = decrypted;
+            return this;
+        }
+
+        public AESDecrypt setTime(long time) {
+            this.time = time;
+            return this;
+        }
+
+        public boolean timedOut(int units, TimeUnit unit) {
+            return NativeOpenSSL.timedOut(nowInSeconds(), time, units, unit);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            AESDecrypt that = (AESDecrypt) o;
+
+            if (time != that.time) return false;
+            return data != null ? data.equals(that.data) : that.data == null;
+
+        }
+
+        @Override
+        public int hashCode() {
+            int result = data != null ? data.hashCode() : 0;
+            result = 31 * result + (int) (time ^ (time >>> 32));
+            return result;
+        }
+
+        @Override
+        public String toString() {
+            return "AESDecrypt{" +
+                    "data='" + data + '\'' +
+                    ", time=" + time +
+                    '}';
+        }
+    }
 
     /**
      * <p>
@@ -89,12 +178,16 @@ public class NativeOpenSSL {
      * @param json Message
      * @return Encrypted message
      */
-    public String encrypt(byte[] password, String json) {
+    @Deprecated
+    public String encryptV1(byte[] password, String json) {
         return Base64.encodeToString(encrypt(password, addLeadingBytesAndPadding(json)), Base64.NO_WRAP);
     }
 
-    public String encryptWithTime(byte[] password, String json) {
-        return Base64.encodeToString(encrypt(password, addLeadingBytesAndPaddingWithTime(json)), Base64.NO_WRAP);
+    public AESEncrypt encrypt(byte[] password, String json) {
+        Pair<byte[], Long> pair = addLeadingBytesAndPaddingWithTime(json);
+        return new AESEncrypt()
+                .setData(Base64.encodeToString(encrypt(password, pair.first), Base64.NO_WRAP))
+                .setTime(pair.second);
     }
 
     /**
@@ -172,18 +265,23 @@ public class NativeOpenSSL {
      * @param message Encrypted Message.
      * @return Json Message
      */
-    public String decrypt(byte[] password, String message) {
+    @Deprecated
+    public String decryptV1(byte[] password, String message) {
         return removeLeadingBytesAndPadding(decrypt(password, Base64.decode(message.getBytes(), Base64.NO_WRAP)));
     }
 
-    public String decrypt(byte[] password, String message, int units, TimeUnit unit) {
-        return removeLeadingBytesAndPadding(decrypt(password, Base64.decode(message.getBytes(), Base64.NO_WRAP)), units, unit);
+    public AESDecrypt decrypt(byte[] password, AESEncrypt message) {
+        return decrypt(password, message.data);
+    }
+
+    public AESDecrypt decrypt(byte[] password, String message) {
+        return removeLeadingBytesAndPaddingWithTime(decrypt(password, Base64.decode(message.getBytes(), Base64.NO_WRAP)));
     }
 
     /**
      * <img src="http://i.imgur.com/hHBTnro.png" />
      */
-    private byte[] addLeadingBytesAndPaddingWithTime(String plainMessage) {
+    private Pair<byte[], Long> addLeadingBytesAndPaddingWithTime(String plainMessage) {
 
         int terminationBytes = 1;
         int randomBytes = 8;
@@ -192,7 +290,8 @@ public class NativeOpenSSL {
         byte[] nonZeroRandomBytes = randomNonZeroBytes(randomBytes);
 
         // 2) 8 bytes epoch time
-        byte[] epochTimeBytes = BigInteger.valueOf(createCalendarUTC().getTimeInMillis() / 1000).toByteArray();
+        long seconds = nowInSeconds();
+        byte[] epochTimeBytes = asEpochSeconds(seconds);
 
         // 3) n bytes plain message
         byte[] plainBytes = plainMessage.getBytes();
@@ -212,7 +311,7 @@ public class NativeOpenSSL {
         // 4) 1 byte termination '0x00'
         finalByteMessage[finalByteMessage.length - 1] = 0x00;
 
-        return finalByteMessage;
+        return new Pair<>(finalByteMessage, seconds);
     }
 
     private byte[] addLeadingBytesAndPadding(String plainMessage) {
@@ -263,12 +362,12 @@ public class NativeOpenSSL {
         return new String(message);
     }
 
-    private String removeLeadingBytesAndPadding(byte[] decryptedMessage, int units, TimeUnit unit) {
+    private AESDecrypt removeLeadingBytesAndPaddingWithTime(byte[] decryptedMessage) {
 
         int randomBytes = 8;
         int amountEpochTimeBytes = 8;
 
-        int lastIndex = randomBytes;
+        int lastIndex = randomBytes + amountEpochTimeBytes;
 
         // find index of '0x00' termination byte
         for (int i = randomBytes; i < decryptedMessage.length; ++i)
@@ -279,55 +378,45 @@ public class NativeOpenSSL {
 
         byte[] epochBytes = new byte[amountEpochTimeBytes];
 
-        System.arraycopy(decryptedMessage, randomBytes, epochBytes, epochBytes.length, epochBytes.length);
-
-        if (!timedOut(epochBytes, units, unit))
-            return "TIME_OUT";
+        System.arraycopy(decryptedMessage, randomBytes, epochBytes, 0, epochBytes.length);
 
         // create message
         byte[] message = new byte[lastIndex - (randomBytes + amountEpochTimeBytes)];
 
         // copy actual message into return value
-        System.arraycopy(decryptedMessage, randomBytes, message, 0, lastIndex - (randomBytes + amountEpochTimeBytes));
+        System.arraycopy(decryptedMessage, randomBytes + amountEpochTimeBytes, message, 0, lastIndex - (randomBytes + amountEpochTimeBytes));
 
-        return new String(message);
+        return new AESDecrypt()
+                .setDecrypted(new String(message))
+                .setTime(epochBytesToSeconds(epochBytes));
     }
 
-    public static DateTimeZone utcTimeZone() {
-        return DateTimeZone.forTimeZone(TimeZone.getTimeZone("UTC"));
+    public static boolean timedOut(long start, long end, int units, TimeUnit unit) {
+        return Math.abs(start - end) >= unit.toSeconds(units);
     }
 
-    public static boolean isLessThanFromUTC(long startTime, long endTime, int units, TimeUnit timeUnit) {
-        return new Duration(new DateTime(startTime, utcTimeZone()), new DateTime(endTime, utcTimeZone()))
-                .toStandardSeconds()
-                .isLessThan(Seconds.seconds((int) timeUnit.toSeconds(units)));
+    public static long epochBytesToSeconds(byte[] epochBytes) {
+        return Long.valueOf(new String(epochBytes), 16);
     }
 
-    /**
-     * @param epochBytes epoch time in millis (8 bytes)
-     */
-    public static boolean timedOut(byte[] epochBytes, int units, TimeUnit timeUnit) {
-        return isLessThanFromUTCNow(new BigInteger(epochBytes).longValue() * 1000, units, timeUnit);
+    public static byte[] asEpochSeconds(long seconds) {
+        return Long.toHexString(seconds).getBytes();
     }
 
-    private static byte[] randomNonZeroBytes(int count) {
+    public static long nowInSeconds() {
+        return createCalendarUTC().getTimeInMillis() / 1000L;
+    }
+
+    @NonNull
+    public static Calendar createCalendarUTC() {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTimeZone(TimeZone.getTimeZone("UTC"));
+        calendar.set(Calendar.MILLISECOND, 0);
+        return calendar;
+    }
+
+    public static byte[] randomNonZeroBytes(int count) {
         return randomBytesInRange(count, 1, 254);
-    }
-
-    public static void encryptDecryptTest() {
-
-        NativeOpenSSL nativeOpenSSL = new NativeOpenSSL();
-        nativeOpenSSL.init();
-
-        byte[] cipher = fromHexString("00112233445566778899AABBCCDDEEFF");
-        String json = "리필 리셋";
-        Log.v(TAG, "[jni] cipher=" + bytesToHex(cipher) + " message=" + json);
-
-        String encrypt = nativeOpenSSL.encrypt(cipher, json);
-        Log.v(TAG, "[jni] encrypted=" + encrypt);
-        Log.v(TAG, "[jni] decrypted=" + nativeOpenSSL.decrypt(cipher, encrypt));
-
-
     }
 
     private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
@@ -364,11 +453,22 @@ public class NativeOpenSSL {
     }
 
 
-    @NonNull
-    private static Calendar createCalendarUTC() {
-        Calendar calendar = Calendar.getInstance();
-        calendar.setTimeZone(TimeZone.getTimeZone("UTC"));
-        calendar.set(Calendar.MILLISECOND, 0);
-        return calendar;
+    public static void encryptDecryptTest() {
+
+        NativeOpenSSL nativeOpenSSL = new NativeOpenSSL();
+        nativeOpenSSL.init();
+
+        byte[] cipher = fromHexString("00112233445566778899AABBCCDDEEFF");
+        String json = "리필 리셋";
+        Log.v(TAG, "[jni] cipher= " + bytesToHex(cipher) + " message=" + json);
+
+        String encrypt = nativeOpenSSL.encryptV1(cipher, json);
+        Log.v(TAG, "[jni] encrypted= " + encrypt);
+        Log.v(TAG, "[jni] decrypted= " + nativeOpenSSL.decryptV1(cipher, encrypt));
+
+        AESEncrypt result = nativeOpenSSL.encrypt(cipher, json);
+        Log.v(TAG, "[jni] encryptWithTime= " + result);
+        AESDecrypt decrypt = nativeOpenSSL.decrypt(cipher, result);
+        Log.v(TAG, "[jni] decrypted= " + decrypt + " timedOut (61s+) =" + decrypt.timedOut(61, TimeUnit.SECONDS));
     }
 }
